@@ -29,7 +29,11 @@ def get_days(val):
 
 
 def get_duration_hours(val):
+    print('OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO')
     intervals = re.findall(r'(\d+:\d+\w{,2})', val[0])
+
+    if not intervals:
+        intervals = [0, 0]
 
     if len(intervals) > 2:
         result = []
@@ -47,13 +51,17 @@ def get_duration_hours(val):
     else:
         # we have 1 timeinterval
         start_time, end_time = intervals
-        start_time = datetime.strptime(start_time, '%I:%M%p')
-        end_time = datetime.strptime(end_time, '%I:%M%p')
-        duration_hours = (end_time - start_time).seconds / 3600
-        # return '[{0:.1f}, {0:.1f}]'.format(int(duration_hours))
-        min_duration = duration_hours
-        max_duration = duration_hours
-
+        if start_time and end_time:
+            start_time = datetime.strptime(start_time, '%I:%M%p')
+            end_time = datetime.strptime(end_time, '%I:%M%p')
+            duration_hours = (end_time - start_time).seconds / 3600
+            # return '[{0:.1f}, {0:.1f}]'.format(int(duration_hours))
+            min_duration = duration_hours
+            max_duration = duration_hours
+        else:
+            min_duration = 0
+            max_duration = 0
+    print(')))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) min {} - max {}'.format(min_duration, max_duration))
     val[0] = [min_duration, max_duration]
     return val
 
@@ -75,7 +83,11 @@ def get_week_days(val):
 
 # Get duration days of week: [2.0, 2.0]
 def get_duration_weekdays(val):
-    weekday_count = re.findall(r'([A-Za-z]+)\s*\d+:\d+\w{,2}', val[0])
+    if val:
+        weekday_count = re.findall(r'([A-Za-z]+)\s*\d+:\d+\w{,2}', val[0])
+    else:
+        weekday_count = []
+
     count = len(weekday_count)
     val[0] = [count, count]
     return val
@@ -83,8 +95,11 @@ def get_duration_weekdays(val):
 
 
 def calculate_total_hours(val):
-    # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!{}->>>>{}'.format(type(val), val))
-    res = list(map(lambda hours_week, days_week: hours_week * days_week, val[0], val[1]))
+    if len(val) > 1:
+        # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!{}->>>>{}'.format(type(val), val))
+        res = list(map(lambda hours_week, days_week: hours_week * days_week, val[0], val[1]))
+    else:
+        res = val
     return res
 
 

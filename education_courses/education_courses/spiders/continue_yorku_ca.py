@@ -25,9 +25,10 @@ class ContinueYorkuCaSpider(scrapy.Spider):
         for program_link in programs[:1]:
             yield response.follow(program_link, callback=self.parse_program)
 
-    def parse_program(self, response):
+    def parse_program(self, response):        
         driver = webdriver.Chrome(CHROME_PATH)
         driver.get(response.url)
+        driver.set_window_size(width=1600, height=1000)
         button = driver.find_element_by_xpath('//header//form[@class="cart"]/button[contains(text(), "Register")]')
         button.click()
         table_element = driver.find_element_by_xpath('//table[@class="shop_table cart"]/tbody')

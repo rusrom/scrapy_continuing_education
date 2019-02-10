@@ -6,12 +6,6 @@ from scrapy.loader import ItemLoader
 from scrapy.loader.processors import TakeFirst, MapCompose
 from education_courses.items import EducationCoursesItem
 
-from selenium import webdriver
-from time import sleep
-
-
-CHROME_PATH = 'D:\\WebDrivers\\chromedriver.exe'
-
 
 class CheckFormRequestSpider(scrapy.Spider):
     name = 'check_form_request'
