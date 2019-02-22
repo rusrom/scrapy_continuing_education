@@ -180,9 +180,17 @@ def go_program(driver, program_url):
         data = {}
         data['institution_name'] = 'York University'
 
-        course_name = target.xpath('./text()').get()
-        data['course_code'] = course_name.strip().split()[0] if course_name else ''
-        data['course_name'] = ' '.join(course_name.split()[1:]) if course_name else ''
+        course_name = target.xpath('./text()').get('')
+        # data['course_code'] = course_name.strip().split()[0] if course_name else ''
+        try:
+            course_code = re.search(r'^\w+\s?/?\d+', course_name).group()
+        except AttributeError:
+            course_code = ''
+        data['course_code'] = course_code
+
+        # data['course_name'] = ' '.join(course_name.split()[1:]) if course_name else ''
+
+        data['course_name'] = course_name.replace(data['course_code'], '').strip() if course_name else ''
 
         course_description = target.xpath('./following-sibling::text()[2][normalize-space()]').get()
         data['description'] = course_description.strip() if course_description else ''
@@ -232,17 +240,37 @@ def go_program(driver, program_url):
     html_cart_table = element_cart_table.get_attribute('innerHTML')
     selector_cart_table = Selector(text=html_cart_table)
 
-    # cart_rows = selector_cart_table.xpath('//tr[1]/following-sibling::tr[@class="cart_item"]')
     cart_rows = selector_cart_table.xpath('//tbody/tr[td[@class="product-price"] and not(contains(string(), "$0.0"))]')
     program_prices = {}
     for row in cart_rows:
-        course_code = row.xpath('string(./td[@class="product-name"])').get().strip().split()[0]
+        cart_course_name = row.xpath('string(./td[@class="product-name"])').get('')
+        try:
+            course_code = re.search(r'^\w+\s?/?\d+', cart_course_name.strip()).group()
+        except AttributeError:
+            course_code = ''
+        course_code = course_code.strip()
         course_price = row.xpath('string(./td[@class="product-price"])').get('').strip().replace('$', '')
         program_prices[course_code] = course_price
 
     # Adding prices to courses
+    # for data in all_courses:
+    #     data['price'] = get_prices(program_prices.get(data['course_code'], ''))
+    #     write_to_csv(data)
+    #     print('Course data was writed to csv!')
+
+    program_prices_for_empty_codes = list(program_prices.items())
     for data in all_courses:
-        data['price'] = get_prices(program_prices.get(data['course_code'], ''))
+        if data['course_code']:
+            # If CODE is already scraped
+            data['price'] = get_prices(program_prices.get(data['course_code'], ''))
+        else:
+            # Fill empty CODE and PRICE
+            try:
+                data['course_code'], data['price'] = program_prices_for_empty_codes.pop(0)
+                data['price'] = get_prices(data['price'])
+            except IndexError:
+                data['price'] = [0.0, 0.0]
+
         write_to_csv(data)
         print('Course data was writed to csv!')
 
@@ -266,7 +294,7 @@ def start_university_scraping(driver):
         driver.delete_all_cookies()
         go_program(driver, program_url)
 
-    # Go next page
+    # # Go next page
     if next_page_url:
         driver.delete_all_cookies()
         print('>>>>>>>>>>>>>>>>>> TO NEXT PAGE >>>>>>>>>>>>>>>>>>>>')
