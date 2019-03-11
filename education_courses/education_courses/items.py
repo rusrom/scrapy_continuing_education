@@ -3,7 +3,7 @@
 import scrapy
 import re
 
-from scrapy.loader.processors import MapCompose, Identity, Compose
+from scrapy.loader.processors import MapCompose, Identity, Compose, Join
 from w3lib.html import replace_escape_chars, replace_entities
 
 from datetime import datetime
@@ -16,10 +16,13 @@ def remove_exra_spaces(val):
 def remove_garbage(val):
     val = replace_escape_chars(val)
     val = replace_entities(val)
+    val = re.sub(r'\.', '. ', val)
+    val = re.sub(r'\s+,\s{2,}', ', ', val)
     val = re.sub(r'\s{2,}', ' ', val)
     return val.strip()
 
 
+# Input data is list of price/prices ['749'] or ['675', '675', '675', '675']
 def get_prices(val):
     if len(val) > 1:
         # More then 1 orice
@@ -53,8 +56,9 @@ def get_prices(val):
     return val
 
 
+# Input data list of lists weekdays 
 def get_days(val):
-    # clear val list from empty [] list
+    # clear val list from empty [] list [['Wed']] or [['Tues', 'Thur'], ['Mon', 'Tues', 'Wed', 'Thur', 'Fri']]
     if val:
         days_intervals = [days for days in val if days and days[0].strip()]
         if days_intervals:
@@ -65,6 +69,32 @@ def get_days(val):
         else:
             val = []
 
+    return val
+
+
+# ['Tues', 'Wed', 'Thurs', 'Fri', 'Tues', 'Wed', 'Thurs', 'Fri']
+def get_unique_days(val):
+    weekdays = [i for i in val if i]
+    if weekdays:
+        val = list(set(val))
+    else:
+        val = []
+    return val
+
+
+# Input data list of lists weekdays [['Wed']] or [['Tues', 'Thur'], ['Mon', 'Tues', 'Wed', 'Thur', 'Fri']]
+def get_days_tuned(val):
+    # clear val list from empty [] list
+    if val:
+        days_intervals = [days for days in val if days]
+        if days_intervals:
+            res = []
+            for i in days_intervals:
+                i = get_unique_days(i)
+                res.append((', '.join(i)))
+            val = list(set(res))
+        else:
+            val = []
     return val
 
 
@@ -83,6 +113,18 @@ def get_timeinterval(val):
     return result
 
 
+# Get min amd max timedelta from list of strings ['9:00am', '5:00pm']
+def get_timeinterval_am_pm(val):
+    # Iterate through all pairs of time start - time end
+    start_time, end_time = val
+    start_time = datetime.strptime(start_time, '%I:%M%p')
+    end_time = datetime.strptime(end_time, '%I:%M%p')
+    # Calculate duration between start time and end time
+    duration_hours = (end_time - start_time).seconds / 3600
+    return duration_hours
+
+
+# Input data [['18:00', '22:30'], ['9:30', '17:30'], ['13:00', '17:00']]
 def get_duration_hours(val):
     # Get all not empty [] lists with intervals
     time_intervals = [interval for interval in val if interval]
@@ -101,6 +143,34 @@ def get_duration_hours(val):
         durations = get_timeinterval(time_intervals[0])
         min_duration = min(durations)
         max_duration = max(durations)
+    else:
+        # No timeinterval []
+        min_duration = 0.0
+        max_duration = 0.0
+
+    val = [round(min_duration, 1), round(max_duration, 1)]
+    return val
+
+
+# Input data [['9:00am', '5:00pm'], ['9:00am', '5:00pm'], ['9:00am', '5:00pm'], ['9:00am', '5:00pm']]
+def get_duration_hours_am_pm(val):
+    # Get all not empty [] lists with intervals
+    time_intervals = [interval for interval in val if interval]
+    amount_of_time_intervals = len(time_intervals)
+    if amount_of_time_intervals > 1:
+        # Several timeintervals like this [['9:00am', '5:00pm'], ['9:00am', '5:00pm'], ['9:00am', '5:00pm']]
+        result = []
+        for list_with_times in time_intervals:
+            durations = get_timeinterval_am_pm(list_with_times)
+            # Add list of durations to result list with all durations
+            result.append(durations)
+        min_duration = min(result)
+        max_duration = max(result)
+    elif amount_of_time_intervals == 1:
+        # 1 timeinterval [['8:30am', '5:00pm']]
+        durations = get_timeinterval_am_pm(time_intervals[0])
+        min_duration = durations
+        max_duration = durations
     else:
         # No timeinterval []
         min_duration = 0.0
@@ -135,6 +205,12 @@ def get_total_hours(val):
         except ValueError:
             hours_site = 0.0
         val = [hours_site, hours_site]
+    return val
+
+
+def get_just_total_hours(val):
+    hours, days = val
+    val = list(map(lambda x, y: x * y, hours, days))
     return val
 
 
@@ -214,6 +290,64 @@ def get_duration_months(val):
             start_date, end_date = val[0]
             start_date = datetime.strptime(start_date, '%B-%d-%Y')
             end_date = datetime.strptime(end_date, '%B-%d-%Y')
+            duration_days = round((end_date - start_date).days / 30, 2)
+            val = [duration_days, duration_days]
+        else:
+            # 1 date inside date intrval
+            val = [0.0, 0.0]
+    return val
+
+
+# Input list of lists of dates intervals [['January-13-2019', 'March-20-2019'], ['March-30-2019', 'June-5-2019']]
+def get_duration_months_tune(val):
+    if len(val) > 1:
+        # delete all lists with only 1 date inside
+        data_intervals = [i for i in val if len(i) > 1]
+        gazer = []
+        for interval in data_intervals:
+            start_date, end_date = interval
+            start_date = datetime.strptime(start_date, '%Y %b %d')
+            end_date = datetime.strptime(end_date, '%Y %b %d')
+            duration_days = round((end_date - start_date).days / 30, 2)
+            gazer.append(duration_days)
+        min_month_dur = min(gazer)
+        max_month_dur = max(gazer)
+        val = [min_month_dur, max_month_dur]
+    else:
+        # 1 date interval
+        if len(val):
+            start_date, end_date = val[0]
+            start_date = datetime.strptime(start_date, '%Y %b %d')
+            end_date = datetime.strptime(end_date, '%Y %b %d')
+            duration_days = round((end_date - start_date).days / 30, 2)
+            val = [duration_days, duration_days]
+        else:
+            # 1 date inside date intrval
+            val = [0.0, 0.0]
+    return val
+
+
+# Input list of lists of dates intervals
+# [[datetime.datetime(2019, 5, 14, 0, 0), datetime.datetime(2019, 8, 20, 0, 0)], [datetime.datetime(2019, 5, 14, 0, 0), datetime.datetime(2019, 8, 20, 0, 0)]] or 
+# [[datetime.datetime(2019, 5, 14, 0, 0), datetime.datetime(2019, 8, 20, 0, 0)]] or
+# [[datetime.datetime(2019, 5, 14, 0, 0)]] or 
+# [[None]]
+def get_duration_months_tune_final(val):
+    if len(val) > 1:
+        # delete all lists with only 1 date inside
+        data_intervals = [i for i in val if len(i) > 1]
+        gazer = []
+        for interval in data_intervals:
+            start_date, end_date = interval
+            duration_days = round((end_date - start_date).days / 30, 2)
+            gazer.append(duration_days)
+        min_month_dur = min(gazer)
+        max_month_dur = max(gazer)
+        val = [min_month_dur, max_month_dur]
+    else:
+        # 1 date interval
+        if len(val[0]) == 2:
+            start_date, end_date = val[0]
             duration_days = round((end_date - start_date).days / 30, 2)
             val = [duration_days, duration_days]
         else:
@@ -333,17 +467,223 @@ class CamosunCourseItem(scrapy.Item):
     location = scrapy.Field()
     subject = scrapy.Field()
     price = scrapy.Field(
-        # input_processor=Compose(
-        #     lambda x: print('>>>>>>>>>>>', x),
-        # )
+        input_processor=Compose(
+            get_prices,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
     )
-    duration_as_string = scrapy.Field()
-    days = scrapy.Field()
+    duration_as_string = scrapy.Field(
+        output_processor=Compose(
+            lambda x: '{} hrs/day, {} days/week for {} months'.format(*x),
+        )
+    )
+    days = scrapy.Field(
+        input_processor=Compose(
+            get_days_tuned,
+        ),
+        output_processor=Compose(
+            lambda x: ' | '.join(x),
+        )
+    )
+    prerequisite = scrapy.Field()
+    capacity = scrapy.Field()
+    corequisites = scrapy.Field(
+        output_processor=Identity()
+    )
+    program = scrapy.Field()
+    duration_hours = scrapy.Field(
+        input_processor=Compose(
+            get_duration_hours_am_pm,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_days_week = scrapy.Field(
+        input_processor=Compose(
+            get_duration_days_week,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_months = scrapy.Field(
+        input_processor=Compose(
+            get_duration_months_tune,
+        ),
+        output_processor=Identity()
+    )
+    total_hours = scrapy.Field(
+        input_processor=Compose(
+            get_just_total_hours
+        ),
+        output_processor=Identity()
+    )
+
+
+class ConestogacCourseItem(scrapy.Item):
+    institution_name = scrapy.Field()
+    course_code = scrapy.Field(
+        input_processor=MapCompose(
+            remove_garbage,
+            lambda x: re.sub(r'^Code:\s*', '', x),
+        )
+    )
+    course_name = scrapy.Field()
+    delivery_types = scrapy.Field()
+    url = scrapy.Field()
+    faculty = scrapy.Field()
+    description = scrapy.Field()
+    location = scrapy.Field()
+    subject = scrapy.Field()
+    price = scrapy.Field(
+        input_processor=Compose(
+            get_prices,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_as_string = scrapy.Field(
+        output_processor=Compose(
+            lambda x: '{} hrs/day, {} days/week for {} months'.format(*x),
+        )
+    )
+    days = scrapy.Field(
+        input_processor=Compose(
+            get_days_tuned,
+        ),
+        output_processor=Compose(
+            lambda x: ' | '.join(x),
+        )
+    )
+    prerequisite = scrapy.Field(
+        output_processor=Join(', ')
+    )
+    capacity = scrapy.Field(
+        output_processor=Identity()
+    )
+    corequisites = scrapy.Field(
+        output_processor=Join(', ')
+    )
+    program = scrapy.Field()
+    duration_hours = scrapy.Field(
+        input_processor=Compose(
+            get_duration_hours_am_pm,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_days_week = scrapy.Field(
+        input_processor=Compose(
+            get_duration_days_week,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_months = scrapy.Field(
+        input_processor=Compose(
+            get_duration_months_tune_final,
+        ),
+        output_processor=Identity()
+    )
+    total_hours = scrapy.Field(
+        input_processor=Compose(
+            get_total_hours,
+        ),
+        output_processor=Identity()
+    )
+
+
+class WcsuwocaCourseItem(scrapy.Item):
+    institution_name = scrapy.Field()
+    course_code = scrapy.Field()
+    course_name = scrapy.Field()
+    delivery_types = scrapy.Field(
+        input_processor=Compose(
+            MapCompose(
+                lambda x: x.strip(),
+            ),
+            lambda x: ', '.join(x),
+        )
+    )
+    url = scrapy.Field(
+        input_processor=MapCompose(
+            lambda x: re.sub(r';jsessionid[^?]+', '', x),
+        )
+    )
+    faculty = scrapy.Field()
+    description = scrapy.Field(
+        input_processor=MapCompose(
+            lambda x: re.sub(r'\r\n\t', ', ', x),
+            remove_garbage,
+            lambda x: re.sub(r'Topics,?\s+', '\nTopics: ', x),
+            lambda x: re.sub(r'Course Outline,?', '\nCourse Outline: ', x),
+        )
+    )
+    location = scrapy.Field()
+    subject = scrapy.Field()
+    price = scrapy.Field(
+        input_processor=Compose(
+            get_prices,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_as_string = scrapy.Field(
+        output_processor=Compose(
+            lambda x: '{} hrs/day, {} days/week for {} months'.format(*x),
+        )
+    )
+    days = scrapy.Field(
+        input_processor=Compose(
+            get_days_tuned,
+        ),
+        output_processor=Compose(
+            lambda x: ' | '.join(x),
+        )
+    )
     prerequisite = scrapy.Field()
     capacity = scrapy.Field()
     corequisites = scrapy.Field()
-    program = scrapy.Field()
-    duration_hours = scrapy.Field()
-    duration_days_week = scrapy.Field()
-    duration_months = scrapy.Field()
-    total_hours = scrapy.Field()
+    program = scrapy.Field(
+        input_processor=Compose(
+            MapCompose(
+                lambda x: x.strip(),
+            ),
+            lambda x: ', '.join(x),
+        )
+    )
+    duration_hours = scrapy.Field(
+        input_processor=Compose(
+            get_duration_hours_am_pm,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_days_week = scrapy.Field(
+        input_processor=Compose(
+            get_duration_days_week,
+        ),
+        output_processor=Compose(
+            lambda x: str(x),
+        )
+    )
+    duration_months = scrapy.Field(
+        input_processor=Compose(
+            get_duration_months_tune_final,
+        ),
+        output_processor=Identity()
+    )
+    total_hours = scrapy.Field(
+        input_processor=Compose(
+            get_total_hours,
+        ),
+        output_processor=Identity()
+    )
